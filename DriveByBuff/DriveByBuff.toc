@@ -1,0 +1,11 @@
+## Interface: 16001
+## Title: |cff69ccf0Drive-By Buff|r
+## Notes: A button pops up with the name of a nearby player or group member who is missing one of your buffs. Click it to buff them. For WoW Forever.
+## Author: Brownaye
+## Version: 1.0.0
+## IconTexture: Interface\Icons\Spell_Holy_MagicalSentry
+## SavedVariables: DriveByBuffDB
+
+Data.lua
+Core.lua
+Options.lua
