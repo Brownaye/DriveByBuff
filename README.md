@@ -30,7 +30,7 @@ Warriors, hunters and rogues have no buffs that are cast on another player, so t
 
 ## Install
 
-Download the latest zip, and extract the `DriveByBuff` folder into `World of Warcraft\_forever_\Interface\AddOns`. Restart the game.
+Download the zip from the [Releases page](https://github.com/Brownaye/DriveByBuff/releases), then extract the `DriveByBuff` folder into `World of Warcraft\_forever_\Interface\AddOns`. Restart the game.
 
 ## Setup
 
