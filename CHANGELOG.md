@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.0
+
+- Middle-click the button to hide it for 10 minutes. `/dbb wake` brings it back sooner, `/dbb snooze` does the same as the middle-click.
+- The button shows roughly how much of your mana bar the buff will cost (for example `4%`).
+- When you don't have the mana for the buff, the button says `No mana` and its border turns red.
+
 ## 1.1.0
 
 - Warlock: Detect Invisibility (Lesser, normal and Greater), off by default. Turn it on in `/dbb`.

@@ -23,6 +23,8 @@ ns.PREFIX = PREFIX
 local STICKY    = 4    -- seconds a stranger stays listed after we lose sight of them
 local SKIP_TIME = 300  -- seconds a right-clicked person is skipped
 local DONE_TIME = 10   -- seconds to wait for a buff we just cast to show up
+local SNOOZE_TIME = 600 -- seconds the button stays away after a middle-click
+local MANA = 0          -- power type number for mana
 
 local DEFAULTS = {
     enabled = true,
@@ -93,6 +95,55 @@ local function Known(id)
     if IsPlayerSpell then return IsPlayerSpell(id) end
     if IsSpellKnown then return IsSpellKnown(id) end
     return false
+end
+
+---------------------------------------------------------------------------
+-- Mana
+---------------------------------------------------------------------------
+-- Mana this spell costs right now, or nil if it is free or the client will
+-- not say.
+local function ManaCost(id)
+    local fn = (C_Spell and C_Spell.GetSpellPowerCost) or GetSpellPowerCost
+    if not fn then return end
+    local ok, costs = pcall(fn, id)
+    if not ok or Secret(costs) or type(costs) ~= "table" then return end
+    for _, c in ipairs(costs) do
+        if not Secret(c.type) and c.type == MANA and not Secret(c.cost)
+           and type(c.cost) == "number" and c.cost > 0 then
+            return c.cost
+        end
+    end
+end
+
+-- Returns cost, the share of your full mana bar it takes (0-100), whether
+-- you are short of mana for it, and your mana. Any of the numbers can be
+-- nil when the client keeps them secret.
+local function ManaInfo(id)
+    local cost = ManaCost(id)
+    local mana = UnitPower and UnitPower("player", MANA)
+    local max = UnitPowerMax and UnitPowerMax("player", MANA)
+    if Secret(mana) or type(mana) ~= "number" then mana = nil end
+    if Secret(max) or type(max) ~= "number" then max = nil end
+
+    local percent
+    if cost and max and max > 0 then percent = cost / max * 100 end
+
+    -- The game's own answer first (it works even when mana is secret),
+    -- then our own sum.
+    local low = false
+    local usable = (C_Spell and C_Spell.IsSpellUsable) or IsUsableSpell
+    if usable then
+        local ok, _, noPower = pcall(usable, id)
+        if ok and not Secret(noPower) and noPower then low = true end
+    end
+    if not low and cost and mana and mana < cost then low = true end
+    return cost, percent, low, mana
+end
+
+local function PercentText(percent)
+    if not percent then return nil end
+    if percent < 1 then return "<1%" end
+    return string.format("%d%%", math.floor(percent + 0.5))
 end
 
 ---------------------------------------------------------------------------
@@ -483,12 +534,16 @@ local function CreateButton()
 
     button.text = button:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     button.text:SetPoint("LEFT", button.icon, "RIGHT", 6, 0)
-    button.text:SetPoint("RIGHT", -26, 0)
     button.text:SetJustifyH("LEFT")
     button.text:SetWordWrap(false)
 
     button.count = button:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     button.count:SetPoint("RIGHT", -6, 0)
+
+    -- Mana cost ("4%"), or a warning when you cannot afford the buff.
+    button.cost = button:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    button.cost:SetPoint("RIGHT", button.count, "LEFT", -4, 0)
+    button.text:SetPoint("RIGHT", button.cost, "LEFT", -4, 0)
 
     button:SetHighlightTexture("Interface\\Buttons\\UI-Listbox-Highlight2", "ADD")
 
@@ -507,7 +562,18 @@ local function CreateButton()
         if current and not unlocked then
             local spell = SpellName(current.spellID) or "?"
             GameTooltip:AddLine(string.format(L["Left-click: cast %s on %s"], spell, current.name), 1, 1, 1)
+            if current.low then
+                GameTooltip:AddLine(current.cost and current.mana
+                    and string.format(L["Not enough mana: it costs %d, you have %d"], current.cost, current.mana)
+                    or L["Not enough mana"], 1, 0.3, 0.3)
+            elseif current.cost then
+                local pct = PercentText(current.percent)
+                GameTooltip:AddLine(pct
+                    and string.format(L["Costs %d mana, about %s of your full bar"], current.cost, pct)
+                    or string.format(L["Costs %d mana"], current.cost), 0.56, 0.72, 1)
+            end
             GameTooltip:AddLine(L["Right-click: skip them for 5 minutes"], 1, 1, 1)
+            GameTooltip:AddLine(L["Middle-click: hide the button for 10 minutes"], 1, 1, 1)
         end
         GameTooltip:AddLine(L["Shift-drag: move the button"], 1, 1, 1)
         GameTooltip:AddLine(L["Type /dbb for options"], 0.6, 0.6, 0.6)
@@ -533,6 +599,11 @@ local function CreateButton()
             Log("SKIP %s", c.name)
             return
         end
+        if mouse == "MiddleButton" then
+            ns.Snooze()
+            return
+        end
+        if mouse ~= "LeftButton" then return end
         -- The button stays up until the buff actually lands (see
         -- UNIT_SPELLCAST_SUCCEEDED), so a failed cast can be retried.
         lastClick = { guid = c.guid, key = c.buff.key, name = c.name, time = now }
@@ -540,6 +611,7 @@ local function CreateButton()
             Log("CLICK %s lvl=%s buff=%s rank=%s group=%s via=%s", c.name, c.level, c.buff.key, c.rank, c.group or false, c.via)
             Log("  seen %s ago | spell range=%s within 28yd=%s | action=[%s]",
                 c.seen and string.format("%.1fs", now - c.seen) or "-", c.spellRange, c.near, self.desc)
+            Log("  mana cost=%s percent=%s have=%s short=%s", c.cost, PercentText(c.percent), c.mana, c.low)
         end
     end)
 
@@ -555,8 +627,22 @@ local function Refresh()
         button.icon:SetTexture(myBuffs[1] and SpellTexture(myBuffs[1].ranks[1][1]) or "Interface\\Icons\\INV_Misc_QuestionMark")
         button.text:SetText(L["Drag me, then /dbb move"])
         button.count:SetText("")
+        button.cost:SetText("")
+        button.icon:SetDesaturated(false)
+        if button.SetBackdropBorderColor then button:SetBackdropBorderColor(0.41, 0.8, 0.94, 1) end
         button:Show()
         return
+    end
+
+    -- Middle-clicked away: stay hidden until the time is up.
+    if db.snoozeUntil then
+        local left = db.snoozeUntil - time()
+        if left > 0 and left <= SNOOZE_TIME then
+            current = nil
+            button:Hide()
+            return
+        end
+        db.snoozeUntil = nil
     end
 
     if not db.enabled or #myBuffs == 0 or UnitIsDeadOrGhost("player") or UnitOnTaxi("player") then
@@ -593,9 +679,48 @@ local function Refresh()
     button.icon:SetTexture(SpellTexture(pick.spellID))
     button.text:SetText(ColorName(pick))
     button.count:SetText(#list > 1 and ("+" .. (#list - 1)) or "")
+
+    -- What it costs, as a share of your full mana bar; red when you are short.
+    pick.cost, pick.percent, pick.low, pick.mana = ManaInfo(pick.spellID)
+    if pick.low then
+        button.cost:SetText("|cffff4040" .. L["No mana"] .. "|r")
+    else
+        local pct = PercentText(pick.percent)
+        button.cost:SetText(pct and ("|cff8fb8ff" .. pct .. "|r") or "")
+    end
+    button.icon:SetDesaturated(pick.low)
+    if button.SetBackdropBorderColor then
+        if pick.low then
+            button:SetBackdropBorderColor(1, 0.25, 0.25, 1)
+        else
+            button:SetBackdropBorderColor(0.41, 0.8, 0.94, 1)
+        end
+    end
     button:Show()
 end
 ns.Refresh = Refresh
+
+---------------------------------------------------------------------------
+-- Snooze (middle-click)
+---------------------------------------------------------------------------
+function ns.Snooze()
+    db.snoozeUntil = time() + SNOOZE_TIME
+    Log("SNOOZE")
+    print(PREFIX .. L["hidden for 10 minutes. Type /dbb wake to bring it back sooner."])
+    Refresh()
+end
+
+function ns.IsSnoozed()
+    return db.snoozeUntil ~= nil and db.snoozeUntil > time()
+end
+
+-- Returns true if the button was snoozed.
+function ns.Wake()
+    local was = ns.IsSnoozed()
+    db.snoozeUntil = nil
+    Refresh()
+    return was
+end
 
 ---------------------------------------------------------------------------
 -- Things the options window calls

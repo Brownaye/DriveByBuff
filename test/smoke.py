@@ -1,7 +1,9 @@
 import io
+import os
 from lupa import lua51 as L
 
-ADDON_DIR = r"C:\Games\World of Warcraft\_forever_\Interface\AddOns\DriveByBuff"
+# Tests the installed copy unless DBB_DIR points somewhere else (the dev folder).
+ADDON_DIR = os.environ.get("DBB_DIR", r"C:\Games\World of Warcraft\_forever_\Interface\AddOns\DriveByBuff")
 FILES = ["Data.lua", "Core.lua", "Options.lua"]
 
 
@@ -36,6 +38,7 @@ COMMON = r"""
     out[#out+1] = label .. ': shown=' .. tostring(b.shown) .. ' text=' .. tostring(b.text and b.text.textValue)
       .. ' type=' .. tostring(b.attrs.type1) .. ' spell=' .. tostring(b.attrs.spell1) .. ' unit=' .. tostring(b.attrs.unit)
       .. ' macro=' .. tostring(macro) .. ' count=' .. tostring(b.count and b.count.textValue)
+      .. ' cost=' .. tostring(b.cost and b.cost.textValue)
   end
   local function click(mouse)
     b.scripts.PreClick(b, mouse, true); b.scripts.PostClick(b, mouse, true)
@@ -44,6 +47,27 @@ COMMON = r"""
 """
 
 MAGE = COMMON + r"""
+  COSTS[1460] = 40
+  tick(); show('mana: costs 40 of 1000 -> 4%'); b.scripts.OnEnter(b)
+  COSTS[1460] = 4
+  tick(); show('mana: costs 4 of 1000 -> <1%')
+  COSTS[1460] = 40; MANA_NOW = 30
+  tick(); show('mana: have 30, need 40 -> No mana'); b.scripts.OnEnter(b)
+  SECRET_MANA = true
+  tick(); show('mana secret, game says nothing -> no cost shown')
+  USABLE_API = true
+  tick(); show('mana secret, game says short -> No mana'); b.scripts.OnEnter(b)
+  SECRET_MANA = false; USABLE_API = false; MANA_NOW = 500; COSTS[1460] = nil
+  tick(); show('free spell -> no cost shown')
+  click('MiddleButton'); tick(); show('middle-click -> hidden')
+  out[#out+1] = 'snoozed=' .. tostring(NS.IsSnoozed()) .. ' seconds=' .. tostring(DriveByBuffDB.snoozeUntil - time())
+  SlashCmdList.DRIVEBYBUFF('move'); show('snoozed, /dbb move still shows it'); SlashCmdList.DRIVEBYBUFF('move')
+  tick(); show('snoozed, locked again -> hidden')
+  DriveByBuffDB.snoozeUntil = time() - 1
+  tick(); show('snooze ran out -> back')
+  SlashCmdList.DRIVEBYBUFF('snooze'); tick(); show('/dbb snooze -> hidden')
+  SlashCmdList.DRIVEBYBUFF('wake'); show('/dbb wake -> back')
+  SlashCmdList.DRIVEBYBUFF('snooze'); SlashCmdList.DRIVEBYBUFF('on'); show('/dbb on also wakes')
   tick(); show('self needs AI')
   UNITS.player.auras = { {name='Arcane Intellect', id=1460} }
   tick(); show('self buffed')

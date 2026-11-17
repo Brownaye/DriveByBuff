@@ -17,6 +17,7 @@ Drive-By Buff does the finding for you. When someone nearby is missing one of yo
 - **Your target stays put.** It buffs them and hands your own target straight back.
 - **Always the right rank.** It casts the highest rank you know, and drops to a lower one for low-level players who can't take it.
 - **No wasted mana.** Anyone who already has the same buff or a better one, including the group-wide versions, is skipped.
+- **Shows the cost.** The button shows roughly how much of your mana bar the buff will take, and turns red when you can't afford it.
 - **Handles a crowd.** In a busy spot it queues everyone up and shows how many are waiting.
 - **Keeps your group covered.** In a party or raid it keeps offering members until nobody is missing a buff.
 - **You stay in control.** One click is one cast. It never casts anything by itself.
@@ -26,7 +27,7 @@ Drive-By Buff does the finding for you. When someone nearby is missing one of yo
 
 1. Someone without your buff comes into range.
 2. A button appears with their name, in their class colour, and the buff's icon.
-3. **Left-click** to buff them. **Right-click** to skip them for 5 minutes.
+3. **Left-click** to buff them. **Right-click** to skip them for 5 minutes. **Middle-click** to hide the button for 10 minutes.
 
 If they're missing two of your buffs, the button moves on to the second once the first lands.
 
@@ -75,6 +76,7 @@ Download the zip from the [Releases page](https://github.com/Brownaye/DriveByBuf
 
 - `/dbb` - open the options window
 - `/dbb on` / `/dbb off` - turn the button on or off
+- `/dbb snooze` / `/dbb wake` - hide the button for 10 minutes; bring it back
 - `/dbb plates` - toggle friendly nameplates
 - `/dbb move` - show the button so you can drag it; again to lock
 - `/dbb reset` - put the button back in the middle

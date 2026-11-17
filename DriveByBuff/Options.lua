@@ -208,7 +208,11 @@ SlashCmdList.DRIVEBYBUFF = function(msg)
     elseif msg == "on" or msg == "off" then
         db.enabled = (msg == "on")
         print(PREFIX .. OnOff(db.enabled))
-        ns.Refresh()
+        if db.enabled then ns.Wake() else ns.Refresh() end
+    elseif msg == "snooze" then
+        ns.Snooze()
+    elseif msg == "wake" then
+        print(PREFIX .. (ns.Wake() and L["back on."] or L["the button was not hidden."]))
     elseif msg == "plates" then
         ns.SetFriendlyPlates(not ns.FriendlyPlatesOn())
     elseif msg == "move" then
@@ -225,6 +229,7 @@ SlashCmdList.DRIVEBYBUFF = function(msg)
         print(PREFIX .. L["commands:"])
         print("  /dbb - " .. L["open the options window"])
         print("  /dbb on | off - " .. L["turn the button on or off"])
+        print("  /dbb snooze | wake - " .. L["hide the button for 10 minutes; bring it back"])
         print("  /dbb plates - " .. L["toggle friendly nameplates"])
         print("  /dbb move - " .. L["show the button so you can drag it; again to lock"])
         print("  /dbb reset - " .. L["put the button back in the middle"])

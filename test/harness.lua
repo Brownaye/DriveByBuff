@@ -84,5 +84,13 @@ function UnitIsPVP(u) return U(u) and U(u).pvp or false end
 function UnitClass(u) return "x", U(u) and U(u).class end
 function UnitLevel(u) return U(u) and U(u).level or 0 end
 function UnitName(u) if U(u) then return U(u).name, U(u).second end end
-function UnitPower() return 500 end
-function issecretvalue(v) return false end
+MANA_NOW, MANA_MAX = 500, 1000
+COSTS = {}
+SECRET = {} -- stands in for a value the client keeps secret
+function UnitPower() return SECRET_MANA and SECRET or MANA_NOW end
+function UnitPowerMax() return SECRET_MANA and SECRET or MANA_MAX end
+C_Spell.GetSpellPowerCost = function(id) return COSTS[id] and { { type = 0, cost = COSTS[id] } } or {} end
+C_Spell.IsSpellUsable = function(id) return true, USABLE_API and (COSTS[id] or 0) > MANA_NOW or false end
+time = os.time
+print = function() end
+function issecretvalue(v) return v == SECRET end
