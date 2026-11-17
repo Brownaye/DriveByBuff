@@ -118,7 +118,32 @@ WARRIOR = COMMON + r"""
   return table.concat(out, '\n')
 """
 
+WARLOCK = COMMON + r"""
+  addSpell(5697,'Unending Breath') addSpell(132,'Detect Lesser Invisibility')
+  addSpell(2970,'Detect Invisibility') addSpell(11743,'Detect Greater Invisibility')
+  GROUP = true; UNITS.party1 = { guid='E', name='Pal', class='PRIEST', level=40, auras={} }
+  tick(); show('both off by default -> nothing')
+  DriveByBuffDB.buffs.detectinvis = true
+  tick(); show('self lvl 23 -> Lesser')
+  UNITS.player.auras = { {name='Detect Greater Invisibility', id=11743} }
+  DriveByBuffDB.buffs.detectinvis = true
+  tick(); show('party lvl 40 -> Detect Invisibility')
+  UNITS.party1.level = 20; tick(); show('party lvl 20 -> Lesser')
+  UNITS.party1.level = 40
+  UNITS.party1.auras = { {name='Detect Lesser Invisibility', id=132} }
+  tick(); show('has Lesser -> upgrade to Detect Invisibility')
+  UNITS.party1.auras = { {name='Detect Greater Invisibility', id=11743} }
+  tick(); show('has Greater -> nothing')
+  UNITS.party1.auras = { {name='Detect Invisibility', id=2970} }
+  UNITS.nameplate1 = { guid='A', name='Uno', class='WARRIOR', level=40, auras={} }
+  fire('NAME_PLATE_UNIT_ADDED', 'nameplate1'); tick(); show('stranger, strangers off -> nothing')
+  DriveByBuffDB.strangers.detectinvis = true
+  tick(); show('stranger, strangers on -> Detect Invisibility')
+  return table.concat(out, '\n')
+"""
+
 for name, cls, known, sc in [
+    ("WARLOCK", "WARLOCK", [5697, 132, 2970], WARLOCK),
     ("MAGE", "MAGE", [1459, 1460], MAGE),
     ("PRIEST", "PRIEST", [1243, 1244, 14752], PRIEST),
     ("PALADIN", "PALADIN", [19740, 19834, 19742, 20217], PALADIN),

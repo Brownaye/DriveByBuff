@@ -65,6 +65,10 @@ ns.BUFFS = {
     },
     WARLOCK = {
         { key = "unendingbreath", default = false, strangers = false, ranks = { {5697, 16} } },
+        -- Three separate spells (Lesser, normal, Greater) that replace each
+        -- other, so they are treated as one rank chain.
+        { key = "detectinvis", default = false, strangers = false,
+          ranks = { {132, 26}, {2970, 38}, {11743, 50} } },
     },
 }
 

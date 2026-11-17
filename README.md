@@ -41,7 +41,7 @@ If they're missing two of your buffs, the button moves on to the second once the
 | Druid | Mark of the Wild, Thorns (group only by default) |
 | Paladin | Blessing of Might, Wisdom or Kings, chosen by the target's class |
 | Shaman | Water Breathing, Water Walking (both off by default) |
-| Warlock | Unending Breath (off by default) |
+| Warlock | Unending Breath, Detect Invisibility (both off by default) |
 
 Warriors, hunters and rogues have no buffs that are cast on another player, so the button stays hidden on those characters.
 
