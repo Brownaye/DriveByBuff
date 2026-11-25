@@ -48,6 +48,72 @@ local function AddButton(parent, x, y, width, text, onClick)
     return b
 end
 
+-- A row with a label and a button that shows the key bound to one of the
+-- addon's actions. Click the button and press a key to bind it; Esc cancels;
+-- right-click unbinds.
+local keyRows = {}
+local MODIFIER = {
+    LSHIFT = true, RSHIFT = true, LCTRL = true, RCTRL = true, LALT = true, RALT = true,
+    LMETA = true, RMETA = true, UNKNOWN = true,
+}
+
+local function SyncKeys()
+    for _, b in ipairs(keyRows) do b.Sync() end
+end
+
+local function AddKeyRow(parent, y, label, action)
+    local fs = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    fs:SetPoint("TOPLEFT", 18, y - 4)
+    fs:SetText(label)
+
+    local b = AddButton(parent, 236, y, 118, "", nil)
+    b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    b.Sync = function()
+        if b.waiting then
+            b:SetText(L["Press a key..."])
+        else
+            b:SetText(ns.KeyText(action) or ("|cff808080" .. L["Not set"] .. "|r"))
+        end
+    end
+    local function Stop()
+        b.waiting = false
+        b:EnableKeyboard(false)
+        b.Sync()
+    end
+    b:SetScript("OnClick", function(self, mouse)
+        if mouse == "RightButton" then
+            Stop()
+            ns.SetKey(action, nil)
+            SyncKeys()
+        elseif self.waiting then
+            Stop()
+        elseif InCombatLockdown() then
+            print(PREFIX .. L["not in combat."])
+        else
+            for _, other in ipairs(keyRows) do
+                if other ~= self and other.waiting then other.Stop() end
+            end
+            self.waiting = true
+            self:EnableKeyboard(true)
+            b.Sync()
+        end
+    end)
+    b:SetScript("OnKeyDown", function(self, key)
+        if not self.waiting or MODIFIER[key] then return end
+        Stop()
+        if key == "ESCAPE" then return end
+        local full = (IsAltKeyDown() and "ALT-" or "") .. (IsControlKeyDown() and "CTRL-" or "")
+            .. (IsShiftKeyDown() and "SHIFT-" or "") .. key
+        ns.SetKey(action, full)
+        SyncKeys()
+    end)
+    b:SetScript("OnHide", Stop)
+    b:EnableKeyboard(false)
+    b.Stop = Stop
+    keyRows[#keyRows + 1] = b
+    return b
+end
+
 local function Build()
     local db = ns.db
     panel = CreateFrame("Frame", "DriveByBuffOptions", UIParent, BackdropTemplateMixin and "BackdropTemplate" or nil)
@@ -108,13 +174,21 @@ local function Build()
                 ns.ApplyCombatHide()
             end
         end)
+    y = y - 26
+    AddCheck(panel, 14, y, L["Show buff icons on the button"],
+        L["Put the mouse on the button and your buff icons appear under it. Click one to change who gets that buff. Off: change buffs in this window only."],
+        function() return db.icons end,
+        function(v)
+            db.icons = v
+            if not v and DriveByBuffStrip then DriveByBuffStrip:Hide() end
+        end)
     y = y - 36
 
     AddHeader(panel, y, L["Buffs"])
-    local strangersHead = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    strangersHead:SetPoint("TOPLEFT", 236, y - 2)
-    strangersHead:SetText(L["also strangers"])
-    y = y - 20
+    local buffsHint = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    buffsHint:SetPoint("TOPLEFT", 70, y - 2)
+    buffsHint:SetText(L["click a buff to change who gets it"])
+    y = y - 22
 
     local buffs = ns.MyBuffs()
     if #buffs == 0 then
@@ -126,28 +200,39 @@ local function Build()
         y = y - 40
     else
         for _, buff in ipairs(buffs) do
+            -- One row per buff: its icon, its name, and who gets it
+            -- (Everyone / Group only / Off). Clicking anywhere on the row
+            -- moves it to the next of the three.
             local name = ns.SpellName(buff.ranks[1][1]) or buff.key
-            local cb, fs = AddCheck(panel, 14, y, name, nil,
-                function()
-                    local v = db.buffs[buff.key]
-                    if v == nil then return buff.default end
-                    return v
-                end,
-                function(v) db.buffs[buff.key] = v end)
+            local toggle = ns.CreateBuffToggle(panel, buff, 22)
+            toggle:SetPoint("TOPLEFT", 18, y)
+            toggle:SetHitRectInsets(0, -310, -2, -2)
+            toggle.tipAnchor = "ANCHOR_RIGHT"
+            local fs = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+            fs:SetPoint("LEFT", toggle, "RIGHT", 8, 0)
+            fs:SetText(name)
             if not ns.HighestKnown(buff) then
                 fs:SetText(name .. " |cff808080(" .. L["not learned"] .. ")|r")
             end
-            AddCheck(panel, 258, y, "", nil,
-                function()
-                    local v = db.strangers[buff.key]
-                    if v == nil then return buff.strangers end
-                    return v
-                end,
-                function(v) db.strangers[buff.key] = v end)
+            toggle.label = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+            toggle.label:SetPoint("LEFT", toggle, "LEFT", 240, 0)
+            toggle:Sync()
             y = y - 26
         end
     end
     y = y - 12
+
+    AddHeader(panel, y, L["Keys"])
+    local keysHint = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    keysHint:SetPoint("TOPLEFT", 70, y - 2)
+    keysHint:SetText(L["click, then press a key. Right-click clears it"])
+    y = y - 22
+    AddKeyRow(panel, y, L["Buff them"], ns.KEY_BUFF)
+    y = y - 26
+    AddKeyRow(panel, y, L["Skip them (5 minutes)"], ns.KEY_SKIP)
+    y = y - 26
+    AddKeyRow(panel, y, L["Hide the button (10 minutes)"], ns.KEY_SNOOZE)
+    y = y - 36
 
     AddHeader(panel, y, L["Noticing people"])
     y = y - 20
@@ -183,6 +268,8 @@ local function Build()
     panel:SetSize(370, -y + 10)
     panel:SetScript("OnShow", function()
         for _, cb in ipairs(checks) do cb.Sync() end
+        ns.SyncToggles()
+        SyncKeys()
         SyncPlates()
         SyncMove()
     end)

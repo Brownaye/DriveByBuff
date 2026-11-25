@@ -12,6 +12,10 @@
 --   * a spell cannot be cast straight at a nameplate, so strangers are
 --     targeted by name, buffed, and your previous target is put back
 --   * some values are "secret" and must never be stored or compared
+--
+-- A key can be bound to the button (options window, or the game's Key
+-- Bindings page). The key presses the button even while it is hidden, so
+-- the button is emptied whenever it hides.
 
 local ADDON, ns = ...
 if ns.disabled then return end
@@ -26,6 +30,18 @@ local DONE_TIME = 10   -- seconds to wait for a buff we just cast to show up
 local SNOOZE_TIME = 600 -- seconds the button stays away after a middle-click
 local MANA = 0          -- power type number for mana
 
+-- Key bindings. Each one "clicks" a button of ours, so the same names work
+-- from the options window and from the game's own Key Bindings page
+-- (Bindings.xml lists them there). Renaming one unbinds every player.
+local KEY_BUFF   = "CLICK DriveByBuffButton:LeftButton"
+local KEY_SKIP   = "CLICK DriveByBuffSkipKey:LeftButton"
+local KEY_SNOOZE = "CLICK DriveByBuffSnoozeKey:LeftButton"
+ns.KEY_BUFF, ns.KEY_SKIP, ns.KEY_SNOOZE = KEY_BUFF, KEY_SKIP, KEY_SNOOZE
+BINDING_HEADER_DRIVEBYBUFF = "Drive-By Buff"
+_G["BINDING_NAME_" .. KEY_BUFF]   = L["Buff the person on the button"]
+_G["BINDING_NAME_" .. KEY_SKIP]   = L["Skip the person on the button"]
+_G["BINDING_NAME_" .. KEY_SNOOZE] = L["Hide the button for 10 minutes"]
+
 local DEFAULTS = {
     enabled = true,
     self = true,
@@ -33,12 +49,15 @@ local DEFAULTS = {
     manaOnly = true,
     hideInCombat = true,
     quietResting = false,
+    icons = true,
     debug = false,
 }
 
 local db
 local holder, button
+local strip             -- row of buff icons that shows while the mouse is on the button
 local unlocked = false
+local inCombat = false
 local myBuffs = {}      -- this class's buffs (from Data.lua)
 local buffByKey = {}
 local buffBySpell = {}  -- rank spell ID -> buff
@@ -482,6 +501,21 @@ local function ApplyAction(rec)
     return "macro " .. (macro:gsub("\n", " | "))
 end
 
+-- Leaves the button with nothing to cast. Without this a key bound to the
+-- button would still buff the last person after the button has gone.
+local function ClearAction()
+    button:SetAttribute("type1", nil)
+    button:SetAttribute("spell1", nil)
+    button:SetAttribute("unit", nil)
+    button:SetAttribute("macrotext1", nil)
+end
+
+local function HideButton()
+    current = nil
+    ClearAction()
+    button:Hide()
+end
+
 local function SavePosition()
     local point, _, relPoint, x, y = button:GetPoint(1)
     db.point, db.relPoint, db.x, db.y = point, relPoint, x, y
@@ -557,11 +591,19 @@ local function CreateButton()
     end)
 
     button:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        -- The icon row takes the space under the button (or over it, near
+        -- the bottom of the screen), so the tooltip goes the other way.
+        local above = ns.ShowStrip()
+        GameTooltip:SetOwner(self, above and "ANCHOR_RIGHT" or "ANCHOR_TOP")
         GameTooltip:AddLine("Drive-By Buff")
         if current and not unlocked then
             local spell = SpellName(current.spellID) or "?"
-            GameTooltip:AddLine(string.format(L["Left-click: cast %s on %s"], spell, current.name), 1, 1, 1)
+            local key = ns.KeyText(KEY_BUFF)
+            if key then
+                GameTooltip:AddLine(string.format(L["Left-click or %s: cast %s on %s"], key, spell, current.name), 1, 1, 1)
+            else
+                GameTooltip:AddLine(string.format(L["Left-click: cast %s on %s"], spell, current.name), 1, 1, 1)
+            end
             if current.low then
                 GameTooltip:AddLine(current.cost and current.mana
                     and string.format(L["Not enough mana: it costs %d, you have %d"], current.cost, current.mana)
@@ -576,6 +618,9 @@ local function CreateButton()
             GameTooltip:AddLine(L["Middle-click: hide the button for 10 minutes"], 1, 1, 1)
         end
         GameTooltip:AddLine(L["Shift-drag: move the button"], 1, 1, 1)
+        if strip and strip:IsShown() then
+            GameTooltip:AddLine(L["Click the small icons to choose which buffs you give"], 1, 1, 1)
+        end
         GameTooltip:AddLine(L["Type /dbb for options"], 0.6, 0.6, 0.6)
         GameTooltip:Show()
     end)
@@ -590,24 +635,22 @@ local function CreateButton()
     end)
 
     button:SetScript("PostClick", function(self, mouse, down)
-        if down or unlocked or not current then return end
+        if unlocked or not current then return end
         local now = GetTime()
         local c = current
-        if mouse == "RightButton" then
-            skipped[c.guid] = now + SKIP_TIME
-            strangers[c.guid] = nil
-            Log("SKIP %s", c.name)
+        if mouse ~= "LeftButton" then
+            if down then return end
+            if mouse == "RightButton" then ns.Skip() end
+            if mouse == "MiddleButton" then ns.Snooze() end
             return
         end
-        if mouse == "MiddleButton" then
-            ns.Snooze()
-            return
-        end
-        if mouse ~= "LeftButton" then return end
         -- The button stays up until the buff actually lands (see
         -- UNIT_SPELLCAST_SUCCEEDED), so a failed cast can be retried.
+        -- A click arrives as a press and a release, and a bound key may send
+        -- only one of the two, so either counts and the pair is logged once.
+        local again = lastClick and lastClick.guid == c.guid and now - lastClick.time < 0.5
         lastClick = { guid = c.guid, key = c.buff.key, name = c.name, time = now }
-        if db.debug then
+        if db.debug and not again then
             Log("CLICK %s lvl=%s buff=%s rank=%s group=%s via=%s", c.name, c.level, c.buff.key, c.rank, c.group or false, c.via)
             Log("  seen %s ago | spell range=%s within 28yd=%s | action=[%s]",
                 c.seen and string.format("%.1fs", now - c.seen) or "-", c.spellRange, c.near, self.desc)
@@ -619,11 +662,11 @@ local function CreateButton()
 end
 
 local function Refresh()
-    if not button or InCombatLockdown() then return end
+    if not button or inCombat or InCombatLockdown() then return end
 
     if unlocked then
         current = nil
-        button:SetAttribute("type1", nil)
+        ClearAction()
         button.icon:SetTexture(myBuffs[1] and SpellTexture(myBuffs[1].ranks[1][1]) or "Interface\\Icons\\INV_Misc_QuestionMark")
         button.text:SetText(L["Drag me, then /dbb move"])
         button.count:SetText("")
@@ -638,23 +681,20 @@ local function Refresh()
     if db.snoozeUntil then
         local left = db.snoozeUntil - time()
         if left > 0 and left <= SNOOZE_TIME then
-            current = nil
-            button:Hide()
+            HideButton()
             return
         end
         db.snoozeUntil = nil
     end
 
     if not db.enabled or #myBuffs == 0 or UnitIsDeadOrGhost("player") or UnitOnTaxi("player") then
-        current = nil
-        button:Hide()
+        HideButton()
         return
     end
 
     local list = Collect()
     if #list == 0 then
-        current = nil
-        button:Hide()
+        HideButton()
         return
     end
 
@@ -669,8 +709,7 @@ local function Refresh()
 
     local desc = ApplyAction(pick)
     if not desc then
-        current = nil
-        button:Hide()
+        HideButton()
         return
     end
 
@@ -699,6 +738,256 @@ local function Refresh()
     button:Show()
 end
 ns.Refresh = Refresh
+
+---------------------------------------------------------------------------
+-- Which buffs you give
+---------------------------------------------------------------------------
+-- Every buff is in one of three states: "all" (everyone), "group" (your
+-- group and yourself only) or "off". They are kept as the two switches the
+-- earlier versions saved, so old settings carry over as they are.
+local toggles = {}
+local NEXT = { all = "group", group = "off", off = "all" }
+local PREV = { all = "off", group = "all", off = "group" }
+local STATE_COLOR = { all = { 0.41, 0.8, 0.94 }, group = { 1, 0.82, 0 }, off = { 0.4, 0.4, 0.4 } }
+
+function ns.BuffState(buff)
+    if not BuffEnabled(buff) then return "off" end
+    return StrangersEnabled(buff) and "all" or "group"
+end
+
+function ns.StateText(state)
+    if state == "all" then return L["Everyone"] end
+    if state == "group" then return L["Group only"] end
+    return L["Off"]
+end
+
+function ns.SyncToggles()
+    for _, t in ipairs(toggles) do t:Sync() end
+end
+
+function ns.SetBuffState(buff, state)
+    if state == "off" then
+        db.buffs[buff.key] = false
+    else
+        db.buffs[buff.key] = true
+        db.strangers[buff.key] = (state == "all")
+    end
+    ns.SyncToggles()
+    Refresh()
+end
+
+local function ToggleTip(self)
+    local buff = self.buff
+    local state = ns.BuffState(buff)
+    local c = STATE_COLOR[state]
+    GameTooltip:SetOwner(self, self.tipAnchor or "ANCHOR_BOTTOM")
+    GameTooltip:AddLine(SpellName(buff.ranks[1][1]) or buff.key)
+    GameTooltip:AddLine(state == "all" and L["Offered to everyone"]
+        or state == "group" and L["Offered to your group only"]
+        or L["Off: not offered to anyone"], c[1], c[2], c[3])
+    if buff.exclusive then
+        GameTooltip:AddLine(L["Only one of these fits on a person, so one is picked from those you allow."], 1, 1, 1, true)
+    end
+    GameTooltip:AddLine(L["Click to change: Everyone > Group only > Off"], 0.6, 0.6, 0.6)
+    GameTooltip:Show()
+end
+
+-- A buff icon you click to change who gets that buff. Used in the row on
+-- the button and in the options window.
+function ns.CreateBuffToggle(parent, buff, size)
+    local t = CreateFrame("Button", nil, parent, BackdropTemplateMixin and "BackdropTemplate" or nil)
+    t:SetSize(size, size)
+    t.buff = buff
+    if t.SetBackdrop then
+        t:SetBackdrop({
+            bgFile = "Interface\\Buttons\\WHITE8x8",
+            edgeFile = "Interface\\Buttons\\WHITE8x8",
+            edgeSize = 1,
+        })
+        t:SetBackdropColor(0, 0, 0, 1)
+    end
+    t.icon = t:CreateTexture(nil, "ARTWORK")
+    t.icon:SetPoint("TOPLEFT", 1, -1)
+    t.icon:SetPoint("BOTTOMRIGHT", -1, 1)
+    t.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    t.icon:SetTexture(SpellTexture(buff.ranks[1][1]))
+    -- A small letter in the corner marks "group only".
+    t.mark = t:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    t.mark:SetPoint("BOTTOMRIGHT", 0, 1)
+
+    function t:Sync()
+        local state = ns.BuffState(buff)
+        local c = STATE_COLOR[state]
+        self.state = state
+        self.icon:SetDesaturated(state == "off")
+        self.icon:SetAlpha(state == "off" and 0.45 or 1)
+        self.mark:SetText(state == "group" and L["G"] or "")
+        if self.SetBackdropBorderColor then self:SetBackdropBorderColor(c[1], c[2], c[3], 1) end
+        if self.label then
+            self.label:SetText(string.format("|cff%02x%02x%02x%s|r", c[1] * 255, c[2] * 255, c[3] * 255, ns.StateText(state)))
+        end
+    end
+
+    t:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    t:SetScript("OnClick", function(self, mouse)
+        local step = (mouse == "RightButton") and PREV or NEXT
+        ns.SetBuffState(buff, step[ns.BuffState(buff)])
+        if self.hovered then ToggleTip(self) end
+    end)
+    t:SetScript("OnEnter", function(self) self.hovered = true ToggleTip(self) end)
+    t:SetScript("OnLeave", function(self) self.hovered = false GameTooltip:Hide() end)
+
+    toggles[#toggles + 1] = t
+    t:Sync()
+    return t
+end
+
+local function Over(f)
+    return f.IsMouseOver and f:IsMouseOver(4, -4, -4, 4) or false
+end
+
+-- The row of icons on the button. Made once at login, out of combat.
+local function CreateStrip()
+    if #myBuffs == 0 then return end
+    strip = CreateFrame("Frame", "DriveByBuffStrip", button)
+    strip.icons = {}
+    for i, buff in ipairs(myBuffs) do
+        strip.icons[i] = ns.CreateBuffToggle(strip, buff, 22)
+    end
+    -- It goes away shortly after the mouse leaves both it and the button.
+    strip:SetScript("OnUpdate", function(self, elapsed)
+        if Over(button) or Over(self) then
+            self.away = 0
+            return
+        end
+        self.away = (self.away or 0) + (elapsed or 0)
+        if self.away > 0.5 then self:Hide() end
+    end)
+    strip:Hide()
+end
+
+-- Shows the row under the button, or over it when the button sits at the
+-- bottom of the screen. Returns true when it went over the button.
+function ns.ShowStrip()
+    if not strip then return false end
+    if not db.icons then
+        strip:Hide()
+        return false
+    end
+    local n = 0
+    for _, t in ipairs(strip.icons) do
+        if HighestKnown(t.buff) then
+            t:ClearAllPoints()
+            t:SetPoint("LEFT", strip, "LEFT", n * 24, 0)
+            t:Sync()
+            t:Show()
+            n = n + 1
+        else
+            t:Hide()
+        end
+    end
+    if n == 0 then
+        strip:Hide()
+        return false
+    end
+    local bottom = button:GetBottom()
+    local above = type(bottom) == "number" and bottom < 30
+    strip:SetSize(n * 24 - 2, 22)
+    strip:ClearAllPoints()
+    if above then
+        strip:SetPoint("BOTTOMLEFT", button, "TOPLEFT", 3, 1)
+    else
+        strip:SetPoint("TOPLEFT", button, "BOTTOMLEFT", 3, -1)
+    end
+    for _, t in ipairs(strip.icons) do t.tipAnchor = above and "ANCHOR_TOP" or "ANCHOR_BOTTOM" end
+    strip.away = 0
+    strip:Show()
+    return above
+end
+
+---------------------------------------------------------------------------
+-- Skip (right-click)
+---------------------------------------------------------------------------
+function ns.Skip()
+    if not current or unlocked then return end
+    skipped[current.guid] = GetTime() + SKIP_TIME
+    strangers[current.guid] = nil
+    Log("SKIP %s", current.name)
+    Refresh()
+end
+
+---------------------------------------------------------------------------
+-- Keys
+---------------------------------------------------------------------------
+-- An unseen button a key can be bound to. A key press can arrive as a
+-- press, a release or both, depending on the client; it counts once.
+local function KeyButton(name, fn)
+    local b = CreateFrame("Button", name, UIParent)
+    b:RegisterForClicks("AnyUp", "AnyDown")
+    local sawDown = false
+    b:SetScript("OnClick", function(_, _, down)
+        if down then
+            sawDown = true
+            fn()
+        else
+            if not sawDown then fn() end
+            sawDown = false
+        end
+    end)
+    return b
+end
+
+local function CreateKeyButtons()
+    KeyButton("DriveByBuffSkipKey", function() ns.Skip() end)
+    KeyButton("DriveByBuffSnoozeKey", function()
+        if ns.IsSnoozed() then
+            ns.Wake()
+            print(PREFIX .. L["back on."])
+        else
+            ns.Snooze()
+        end
+    end)
+end
+
+-- The key bound to one of our actions, or nil.
+function ns.GetKey(action)
+    if not GetBindingKey then return nil end
+    local key = GetBindingKey(action)
+    return key
+end
+
+-- The same, written the way the game shows keys.
+function ns.KeyText(action)
+    local key = ns.GetKey(action)
+    if not key then return nil end
+    return GetBindingText and GetBindingText(key) or key
+end
+
+-- Binds a key to one of our actions (nil: unbinds it). Returns true if done.
+function ns.SetKey(action, key)
+    if InCombatLockdown() then
+        print(PREFIX .. L["not in combat."])
+        return false
+    end
+    if not SetBinding or not GetBindingKey then return false end
+    local was = key and GetBindingAction and GetBindingAction(key)
+    for _ = 1, 4 do
+        local old = GetBindingKey(action)
+        if not old then break end
+        SetBinding(old, nil)
+    end
+    if key and not SetBinding(key, action) then
+        print(PREFIX .. string.format(L["could not bind %s."], key))
+        return false
+    end
+    local save = AttemptToSaveBindings or SaveBindings
+    if save and GetCurrentBindingSet then save(GetCurrentBindingSet()) end
+    if was and was ~= "" and was ~= action then
+        print(PREFIX .. string.format(L["%s was bound to \"%s\" and now belongs to Drive-By Buff."],
+            key, _G["BINDING_NAME_" .. was] or was))
+    end
+    return true
+end
 
 ---------------------------------------------------------------------------
 -- Snooze (middle-click)
@@ -790,6 +1079,7 @@ frame:RegisterEvent("UPDATE_MOUSEOVER_UNIT")
 frame:RegisterEvent("PLAYER_TARGET_CHANGED")
 frame:RegisterEvent("GROUP_ROSTER_UPDATE")
 frame:RegisterEvent("PLAYER_REGEN_ENABLED")
+frame:RegisterEvent("PLAYER_REGEN_DISABLED")
 frame:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
 frame:RegisterEvent("UNIT_SPELLCAST_FAILED")
 frame:RegisterEvent("UI_ERROR_MESSAGE")
@@ -813,6 +1103,8 @@ frame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3)
         ns.db = db
         SetupClass()
         CreateButton()
+        CreateStrip()
+        CreateKeyButtons()
         C_Timer.NewTicker(0.3, Refresh)
         return
     end
@@ -824,7 +1116,18 @@ frame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3)
             db.hinted = true
             print(PREFIX .. L["friendly nameplates are off, so only your mouseover, target and group are checked. Type /dbb to turn them on and notice everyone running by."])
         end
+    elseif event == "PLAYER_REGEN_DISABLED" then
+        -- Combat starts right after this, and from then on the button cannot
+        -- be changed. If it is about to hide, empty it now, so a bound key
+        -- does not fire a stale buff in the middle of a fight.
+        inCombat = true
+        if db.hideInCombat and not unlocked then
+            current = nil
+            ClearAction()
+        end
+        return
     elseif event == "PLAYER_REGEN_ENABLED" then
+        inCombat = false
         ApplyCombatHide()
     elseif event == "PLAYER_TARGET_CHANGED" then
         if db.debug and lastPreClick and GetTime() - lastPreClick < 1 then

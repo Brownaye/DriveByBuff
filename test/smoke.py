@@ -166,12 +166,100 @@ WARLOCK = COMMON + r"""
   return table.concat(out, '\n')
 """
 
+KEYS = COMMON + r"""
+  local function fort() UNITS.player.auras = { {name='Power Word: Fortitude', id=1244}, {name='Divine Spirit', id=14752} } end
+  local function state(k) for _, bf in ipairs(NS.MyBuffs()) do if bf.key == k then return NS.BuffState(bf), bf end end end
+  fort()
+  UNITS.nameplate1 = { guid='A', name='Uno', class='MAGE', level=38, auras={} }
+  fire('NAME_PLATE_UNIT_ADDED', 'nameplate1'); tick(); show('mage needs fort')
+  -- bind a key from the options window
+  SlashCmdList.DRIVEBYBUFF('')
+  local keyBtns = {}
+  for _, f in ipairs(FRAMES) do if f.scripts.OnKeyDown then keyBtns[#keyBtns+1] = f end end
+  out[#out+1] = 'key rows=' .. #keyBtns .. ' first=' .. tostring(keyBtns[1].textValue)
+  keyBtns[1].scripts.OnClick(keyBtns[1], 'LeftButton'); out[#out+1] = 'waiting text=' .. tostring(keyBtns[1].textValue)
+  keyBtns[1].scripts.OnKeyDown(keyBtns[1], 'LSHIFT'); out[#out+1] = 'modifier alone ignored, waiting=' .. tostring(keyBtns[1].waiting)
+  CTRL = true; keyBtns[1].scripts.OnKeyDown(keyBtns[1], 'F'); CTRL = false
+  out[#out+1] = 'bound=' .. tostring(NS.GetKey(NS.KEY_BUFF)) .. ' action=' .. tostring(BINDINGS['CTRL-F']) .. ' text=' .. tostring(keyBtns[1].textValue) .. ' saved=' .. SAVED_BINDINGS
+  keyBtns[1].scripts.OnClick(keyBtns[1], 'LeftButton'); keyBtns[1].scripts.OnKeyDown(keyBtns[1], 'ESCAPE')
+  out[#out+1] = 'esc cancels, still=' .. tostring(NS.GetKey(NS.KEY_BUFF))
+  keyBtns[1].scripts.OnClick(keyBtns[1], 'LeftButton'); keyBtns[1].scripts.OnKeyDown(keyBtns[1], 'G')
+  out[#out+1] = 'rebound=' .. tostring(NS.GetKey(NS.KEY_BUFF)) .. ' old CTRL-F=' .. tostring(BINDINGS['CTRL-F'])
+  BINDINGS['H'] = 'JUMP'
+  keyBtns[2].scripts.OnClick(keyBtns[2], 'LeftButton'); keyBtns[2].scripts.OnKeyDown(keyBtns[2], 'H')
+  out[#out+1] = 'skip key=' .. tostring(NS.GetKey(NS.KEY_SKIP)) .. ' (took H from JUMP)'
+  COMBAT = true; keyBtns[3].scripts.OnClick(keyBtns[3], 'LeftButton'); COMBAT = false
+  out[#out+1] = 'no binding in combat, waiting=' .. tostring(keyBtns[3].waiting)
+  b.scripts.OnEnter(b)
+  keyBtns[1].scripts.OnClick(keyBtns[1], 'RightButton')
+  out[#out+1] = 'right-click clears=' .. tostring(NS.GetKey(NS.KEY_BUFF)) .. ' text=' .. tostring(keyBtns[1].textValue)
+  b.scripts.OnEnter(b)
+  -- the button empties when it hides, so a key cannot fire a stale buff
+  UNITS.nameplate1.auras = { {name='Power Word: Fortitude', id=1244}, {name='Divine Spirit', id=14752} }
+  tick(); show('nobody left -> hidden AND emptied')
+  UNITS.nameplate1.auras = {}
+  tick(); show('needs fort again')
+  fire('PLAYER_REGEN_DISABLED'); show('combat starts -> emptied')
+  tick(); show('tick during combat start -> still empty')
+  fire('PLAYER_REGEN_ENABLED'); show('combat over -> back')
+  DriveByBuffDB.hideInCombat = false
+  fire('PLAYER_REGEN_DISABLED'); show('combat, button stays visible -> action kept')
+  fire('PLAYER_REGEN_ENABLED'); DriveByBuffDB.hideInCombat = true
+  -- key press as down+up, down only, up only
+  click('LeftButton'); out[#out+1] = 'left click ok'
+  local sk = DriveByBuffSkipKey
+  UNITS.nameplate2 = { guid='B', name='Dos', class='MAGE', level=38, auras={} }
+  fire('NAME_PLATE_UNIT_ADDED', 'nameplate2'); tick(); show('two people')
+  sk.scripts.OnClick(sk, 'LeftButton', true); sk.scripts.OnClick(sk, 'LeftButton', false); show('skip key down+up -> one skipped')
+  sk.scripts.OnClick(sk, 'LeftButton', false); show('skip key up only -> second skipped')
+  sk.scripts.OnClick(sk, 'LeftButton', false); show('skip key with nobody -> nothing')
+  local sn = DriveByBuffSnoozeKey
+  sn.scripts.OnClick(sn, 'LeftButton', true); sn.scripts.OnClick(sn, 'LeftButton', false)
+  out[#out+1] = 'snooze key -> snoozed=' .. tostring(NS.IsSnoozed())
+  sn.scripts.OnClick(sn, 'LeftButton', true); sn.scripts.OnClick(sn, 'LeftButton', false)
+  out[#out+1] = 'snooze key again -> snoozed=' .. tostring(NS.IsSnoozed())
+  -- buff icons
+  UNITS.nameplate3 = { guid='C', name='Tres', class='MAGE', level=38, auras={} }
+  fire('NAME_PLATE_UNIT_ADDED', 'nameplate3'); tick(); show('stranger needs fort')
+  local strip = DriveByBuffStrip
+  b.scripts.OnEnter(b)
+  local vis = 0; for _, t in ipairs(strip.icons) do if t.shown then vis = vis + 1 end end
+  out[#out+1] = 'strip shown=' .. tostring(strip.shown) .. ' icons=' .. #strip.icons .. ' visible(learned)=' .. vis
+  out[#out+1] = 'states: fort=' .. state('fortitude') .. ' spirit=' .. state('spirit') .. ' shadow=' .. state('shadowprot')
+  local fi, si = strip.icons[1], strip.icons[2]
+  fi.scripts.OnEnter(fi)
+  fi.scripts.OnClick(fi, 'LeftButton'); out[#out+1] = 'fort click -> ' .. state('fortitude') .. ' mark=' .. tostring(fi.mark.textValue)
+  tick(); show('fort group only: stranger gets spirit')
+  UNITS.player.auras = {}; tick(); show('fort group only: self still gets fort')
+  fort()
+  fi.scripts.OnClick(fi, 'LeftButton'); out[#out+1] = 'fort click -> ' .. state('fortitude')
+  si.scripts.OnClick(si, 'LeftButton'); si.scripts.OnClick(si, 'LeftButton'); out[#out+1] = 'spirit 2 clicks -> ' .. state('spirit')
+  tick(); show('fort off + spirit off -> nothing')
+  fi.scripts.OnClick(fi, 'LeftButton'); out[#out+1] = 'fort click -> ' .. state('fortitude')
+  fi.scripts.OnClick(fi, 'RightButton'); out[#out+1] = 'fort right-click (back) -> ' .. state('fortitude')
+  fi.scripts.OnClick(fi, 'RightButton'); fi.scripts.OnClick(fi, 'RightButton'); out[#out+1] = 'fort 2 right-clicks -> ' .. state('fortitude')
+  tick(); show('fort everyone again')
+  DriveByBuffDB.icons = false; b.scripts.OnEnter(b); out[#out+1] = 'icons option off -> strip shown=' .. tostring(strip.shown)
+  DriveByBuffDB.icons = true; b.scripts.OnEnter(b); out[#out+1] = 'icons option on -> strip shown=' .. tostring(strip.shown)
+  -- the options window rows follow the same state
+  local labels = {}
+  for _, f in ipairs(FRAMES) do if f.label and f.buff then labels[#labels+1] = f.buff.key .. '=' .. tostring(f.label.textValue) end end
+  out[#out+1] = 'options rows: ' .. table.concat(labels, ' ')
+  -- old settings carry over
+  DriveByBuffDB.buffs.spirit = true; DriveByBuffDB.strangers.spirit = false
+  out[#out+1] = 'old settings spirit on/strangers off -> ' .. state('spirit')
+  DriveByBuffDB.buffs.spirit = false; DriveByBuffDB.strangers.spirit = true
+  out[#out+1] = 'old settings spirit off/strangers on -> ' .. state('spirit')
+  return table.concat(out, '\n')
+"""
+
 for name, cls, known, sc in [
     ("WARLOCK", "WARLOCK", [5697, 132, 2970], WARLOCK),
     ("MAGE", "MAGE", [1459, 1460], MAGE),
     ("PRIEST", "PRIEST", [1243, 1244, 14752], PRIEST),
     ("PALADIN", "PALADIN", [19740, 19834, 19742, 20217], PALADIN),
     ("WARRIOR", "WARRIOR", [], WARRIOR),
+    ("KEYS + ICONS (priest)", "PRIEST", [1243, 1244, 14752], KEYS),
 ]:
     print("=====", name)
     try:

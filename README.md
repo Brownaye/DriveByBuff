@@ -28,6 +28,8 @@ Drive-By Buff does the finding for you. When someone nearby is missing one of yo
 1. Someone without your buff comes into range.
 2. A button appears with their name, in their class colour, and the buff's icon.
 3. **Left-click** to buff them. **Right-click** to skip them for 5 minutes. **Middle-click** to hide the button for 10 minutes.
+4. Rather use the keyboard? Bind a key to each of those in `/dbb`.
+5. Put the mouse on the button and a row of your buff icons appears. Click an icon to choose who gets that buff: **everyone**, **your group only**, or **off**.
 
 If they're missing two of your buffs, the button moves on to the second once the first lands.
 
@@ -60,7 +62,9 @@ Download the zip from the [Releases page](https://github.com/Brownaye/DriveByBuf
 
 ![Options window](screenshots/3-options.png)
 
-- Turn each buff on or off, and choose whether it is offered to strangers or only your group.
+- Click a buff to choose who gets it: everyone, your group only, or off. The same icons sit on the button itself.
+- Show buff icons on the button (on by default).
+- Bind keys for buff, skip and hide. Click the key button and press a key; right-click clears it. They are also on the game's Key Bindings page.
 - Include yourself.
 - Caster buffs skip warriors and rogues.
 - Offer PvP-flagged strangers (off by default, because buffing them flags you).

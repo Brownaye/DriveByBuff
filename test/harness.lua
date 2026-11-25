@@ -16,6 +16,9 @@ local function newFrame(kind, name)
         if k == "GetChecked" then return function(self) return self.checked end end
         if k == "SetChecked" then return function(self, v) self.checked = v end end
         if k == "CreateFontString" or k == "CreateTexture" then return function() return newFrame("region") end end
+        -- Game methods start with a capital; anything else is a field the
+        -- addon has not set yet, which is nil in the game too.
+        if type(k) ~= "string" or not k:match("^%u") then return nil end
         return function() end
     end
     return setmetatable(f, mt)
@@ -94,3 +97,13 @@ C_Spell.IsSpellUsable = function(id) return true, USABLE_API and (COSTS[id] or 0
 time = os.time
 print = function() end
 function issecretvalue(v) return v == SECRET end
+-- Key bindings
+BINDINGS = {}
+SAVED_BINDINGS = 0
+function GetBindingKey(action) for k, a in pairs(BINDINGS) do if a == action then return k end end end
+function GetBindingAction(key) return BINDINGS[key] or "" end
+function SetBinding(key, action) BINDINGS[key] = action return true end
+function GetCurrentBindingSet() return 1 end
+function SaveBindings() SAVED_BINDINGS = SAVED_BINDINGS + 1 end
+function IsAltKeyDown() return false end
+function IsControlKeyDown() return CTRL or false end

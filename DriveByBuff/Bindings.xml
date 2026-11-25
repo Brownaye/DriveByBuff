@@ -1,0 +1,18 @@
+<!-- Drive-By Buff's rows on the game's Key Bindings page.
+
+     NOT listed in DriveByBuff.toc: the client loads a file named Bindings.xml
+     from the addon's folder by itself.
+
+     Each row is "CLICK <FrameName>:LeftButton": the key presses that button.
+     The names are saved with the player's keys, so renaming one unbinds every
+     player. The labels (BINDING_NAME_...) and the section title
+     (BINDING_HEADER_DRIVEBYBUFF) are set at the top of Core.lua. No default
+     keys, so nothing can clash. -->
+<Bindings>
+	<Binding name="CLICK DriveByBuffButton:LeftButton" category="BINDING_HEADER_DRIVEBYBUFF">
+	</Binding>
+	<Binding name="CLICK DriveByBuffSkipKey:LeftButton" category="BINDING_HEADER_DRIVEBYBUFF">
+	</Binding>
+	<Binding name="CLICK DriveByBuffSnoozeKey:LeftButton" category="BINDING_HEADER_DRIVEBYBUFF">
+	</Binding>
+</Bindings>
